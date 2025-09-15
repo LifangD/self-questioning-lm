@@ -48,7 +48,8 @@ if __name__ == "__main__":
             prompt = problem + " " + instruction_following
             answer = example.pop("answer")
             images = example.pop("images")
-
+            print(prompt)
+            #print(images)
             data = {
                 "data_source": data_source,
                 "prompt": [

@@ -1,0 +1,23 @@
+# @package _global_
+
+# 确保token数量安全
+data:
+  max_prompt_length: 200      # 大幅减少prompt长度
+  max_response_length: 300    # 减少response长度  
+  train_batch_size: 1         # 强制batch_size=1
+
+actor_rollout_ref:
+  rollout:
+    n: 1                      # 只生成1个回答
+    log_prob_micro_batch_size_per_gpu: 1
+    
+  actor:
+    ppo_mini_batch_size: 1    # 最小batch
+    ppo_micro_batch_size_per_gpu: 1
+    
+  ref:
+    log_prob_micro_batch_size_per_gpu: 1
+
+trainer:
+  nnodes: 1
+  n_gpus_per_node: 1 

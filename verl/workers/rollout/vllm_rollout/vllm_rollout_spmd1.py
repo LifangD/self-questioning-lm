@@ -166,7 +166,7 @@ class vLLMRollout(BaseRollout):
             trust_remote_code=trust_remote_code,
             seed=config.get("seed", 0),
             **lora_kwargs,
-            **engine_kwargs,
+            **engine_kwargs
         )
 
         # Offload vllm model to reduce peak memory usage
@@ -191,6 +191,7 @@ class vLLMRollout(BaseRollout):
         self.sampling_params = SamplingParams(**kwargs)
 
         self.pad_token_id = tokenizer.pad_token_id
+        #print(f"dlf_check: {self.pad_token_id}")
 
     @contextmanager
     def update_sampling_params(self, **kwargs):
@@ -239,111 +240,42 @@ class vLLMRollout(BaseRollout):
         if batch_size != len(non_tensor_batch["raw_prompt_ids"]):
             raise RuntimeError("vllm sharding manager is not work properly.")
 
-        # ===== 添加调试检查逻辑 =====
-        print("🔍 === 开始检查batch数据 ===")
-        print(f"batch_size = {batch_size}")
+        # 调试：检查prompts中的所有数据
+        print(f"🔍 prompts.batch.keys(): {list(prompts.batch.keys())}")
+        print(f"🔍 prompts.non_tensor_batch.keys(): {list(prompts.non_tensor_batch.keys())}")
         
-        # 基础数量检查
-        print(f"🔢 基础数量检查:")
-        print(f"  idx.shape = {idx.shape}")
-        print(f"  attention_mask.shape = {attention_mask.shape}")
-        print(f"  raw_prompt_ids数量 = {len(non_tensor_batch['raw_prompt_ids'])}")
-        
-        if "multi_modal_data" in non_tensor_batch:
-            mmd_count = len(non_tensor_batch['multi_modal_data'])
-            print(f"  multi_modal_data数量 = {mmd_count}")
-            
-            # 检查数量一致性
-            if mmd_count != batch_size:
-                print(f"  ❌ 数量不一致! multi_modal_data({mmd_count}) != batch_size({batch_size})")
-            else:
-                print(f"  ✅ multi_modal_data数量与batch_size一致")
-        
-        # 检查每个样本的image_pad数量
-        if "multi_modal_data" in non_tensor_batch:
-            print(f"✅ 检测到multi_modal_data，样本数量: {len(non_tensor_batch['multi_modal_data'])}")
-            
-            # 统计expanded tokens中的image_pad数量
-            total_expanded_image_pads = 0
-            expanded_counts = []
-            for i in range(batch_size):
-                expanded_prompt_ids = idx[i][attention_mask[i] == 1].tolist()
-                image_pad_count = expanded_prompt_ids.count(151655)
-                expanded_counts.append(image_pad_count)
-                total_expanded_image_pads += image_pad_count
-                print(f"  样本{i}: expanded tokens中image_pad数量 = {image_pad_count}")
-            
-            # 统计raw_prompt_ids中的image_pad数量
-            total_raw_image_pads = 0
-            raw_counts = []
-            for i, raw_prompt_ids in enumerate(non_tensor_batch["raw_prompt_ids"]):
-                raw_image_pad_count = raw_prompt_ids.count(151655) if hasattr(raw_prompt_ids, 'count') else len([x for x in raw_prompt_ids if x == 151655])
-                raw_counts.append(raw_image_pad_count)
-                total_raw_image_pads += raw_image_pad_count
-                print(f"  样本{i}: raw_prompt_ids中image_pad数量 = {raw_image_pad_count}")
-            
-            print(f"📊 统计结果:")
-            print(f"  expanded tokens总image_pad: {total_expanded_image_pads}")
-            print(f"  raw_prompt_ids总image_pad: {total_raw_image_pads}")
-            print(f"  expanded各样本: {expanded_counts}")
-            print(f"  raw各样本: {raw_counts}")
-            
-            # 检查序列长度和可能的截断
-            print(f"📏 序列长度检查:")
-            cumulative_lengths = []
-            total_length = 0
-            for i in range(batch_size):
-                sample_length = len(idx[i][attention_mask[i] == 1])
-                total_length += sample_length
-                cumulative_lengths.append(total_length)
-                print(f"  样本{i}: 长度={sample_length}, 累计长度={total_length}")
-            
-            print(f"  总序列长度: {total_length}")
-            print(f"  预期is_multimodal长度: {total_length}")
-            print(f"  实际input_ids长度: {idx.shape[1]} x {batch_size} = {idx.shape[1] * batch_size}")
-            
-            # 检查是否存在截断
-            max_allowed_length = 16384  # 从日志中看到的is_multimodal.shape
-            if total_length > max_allowed_length:
-                print(f"  ⚠️  可能的截断! 总长度{total_length} > 最大长度{max_allowed_length}")
-                # 计算截断位置
-                truncated_at_sample = None
-                for i, cum_len in enumerate(cumulative_lengths):
-                    if cum_len > max_allowed_length:
-                        truncated_at_sample = i
-                        break
-                if truncated_at_sample is not None:
-                    print(f"  截断可能发生在样本{truncated_at_sample}附近")
-                    print(f"  包含的样本: 0-{truncated_at_sample-1}")
-                    print(f"  丢失的样本: {truncated_at_sample}-{batch_size-1}")
-            else:
-                print(f"  ✅ 未发现截断问题")
-            
-            # 检查multi_modal_data内容
-            print(f"📷 multi_modal_data检查:")
-            for i, mmd in enumerate(non_tensor_batch["multi_modal_data"]):
-                if isinstance(mmd, dict):
-                    print(f"  样本{i}: keys = {list(mmd.keys())}")
-                    if 'image' in mmd:
-                        image = mmd['image']
-                        if hasattr(image, 'size'):
-                            print(f"    图像尺寸: {image.size}")
-                        elif hasattr(image, 'shape'):
-                            print(f"    图像shape: {image.shape}")
-                else:
-                    print(f"  样本{i}: type = {type(mmd)}")
-        else:
-            print("❌ 未检测到multi_modal_data")
-        print("🔍 === 检查完毕 ===\n")
-        # ===== 调试检查逻辑结束 =====
+        # 移除所有可能的multimodal数据
+        multimodal_keys_to_remove = ["multi_modal_data", "multi_modal_inputs", "pixel_values", "image_grid_thw", "video_grid_thw"]
+        for key in multimodal_keys_to_remove:
+            if key in non_tensor_batch:
+                print(f"🧹 移除 non_tensor_batch['{key}']")
+                non_tensor_batch.pop(key)
+            if key in prompts.batch:
+                print(f"🧹 移除 prompts.batch['{key}']")
+                prompts.batch.pop(key)
 
         if "multi_modal_data" in non_tensor_batch:
+            # 明确移除multi_modal_data，避免VLLM获取到图像数据
+            non_tensor_batch.pop("multi_modal_data")
+            
             vllm_inputs = []
-            for raw_prompt_ids, multi_modal_data in zip(non_tensor_batch.pop("raw_prompt_ids"), non_tensor_batch.pop("multi_modal_data")):
-                vllm_inputs.append({"prompt_token_ids": raw_prompt_ids, "multi_modal_data": multi_modal_data})
+            for i in range(batch_size):
+                # 使用已扩展的tokens（从训练数据中获取），去除padding
+                expanded_prompt_ids = idx[i][attention_mask[i] == 1].tolist()
+                
+                print(f"样本 {i}: 原始长度={len(idx[i])}, 去padding后长度={len(expanded_prompt_ids)}")
+                print(f"  image_pad count: {expanded_prompt_ids.count(151655)}")
+                
+                # 不传递multi_modal_data，避免VLLM重新处理图像
+                # 因为tokens已经是扩展后的了
+                vllm_inputs.append({
+                    "prompt_token_ids": expanded_prompt_ids
+                    # 注意：这里故意不传递multi_modal_data
+                })
+                
         else:
             vllm_inputs = [{"prompt_token_ids": raw_prompt_ids} for raw_prompt_ids in non_tensor_batch.pop("raw_prompt_ids")]
-
+    
         # ensure the type of `prompt_token_ids` passed to vllm is list[int]
         # https://github.com/volcengine/verl/pull/772
         for input_data in vllm_inputs:
@@ -380,55 +312,34 @@ class vLLMRollout(BaseRollout):
                 lora_requests = [LoRARequest(lora_name=f"{lora_int_id}", lora_int_id=lora_int_id, lora_path="/simon-stub-path")] * batch_size
 
         # users can customize different sampling_params at different run
+        
         with self.update_sampling_params(**kwargs):
-            # ===== 添加VLLM内部监控 =====
-            original_merge_function = None
-            try:
-                from vllm.model_executor.models.utils import _merge_multimodal_embeddings
-                original_merge_function = _merge_multimodal_embeddings
-                
-                def debug_merge_multimodal_embeddings(inputs_embeds, is_multimodal, multimodal_embeddings):
-                    num_expected = is_multimodal.sum().item()
-                    from vllm.model_executor.models.utils import _flatten_embeddings
-                    flattened = _flatten_embeddings(multimodal_embeddings)
-                    actual_count = flattened.shape[0]
-                    
-                    print(f"🔍 VLLM内部_merge_multimodal_embeddings调用:")
-                    print(f"  is_multimodal.sum() (num_expected) = {num_expected}")
-                    print(f"  flattened.shape[0] (actual_count) = {actual_count}")
-                    print(f"  差异 = {actual_count - num_expected}")
-                    print(f"  is_multimodal.shape = {is_multimodal.shape}")
-                    print(f"  inputs_embeds.shape = {inputs_embeds.shape}")
-                    
-                    if num_expected != actual_count:
-                        print(f"  ❌ 数量不匹配! 这就是错误的原因")
-                        print(f"  multimodal_embeddings类型 = {type(multimodal_embeddings)}")
-                        if hasattr(multimodal_embeddings, '__len__'):
-                            print(f"  multimodal_embeddings长度 = {len(multimodal_embeddings)}")
-                            if isinstance(multimodal_embeddings, list):
-                                for j, emb in enumerate(multimodal_embeddings):
-                                    if hasattr(emb, 'shape'):
-                                        print(f"    embedding[{j}].shape = {emb.shape}")
-                    else:
-                        print(f"  ✅ 数量匹配")
-                    
-                    return original_merge_function(inputs_embeds, is_multimodal, multimodal_embeddings)
-                
-                # 替换函数进行监控
-                import vllm.model_executor.models.utils
-                vllm.model_executor.models.utils._merge_multimodal_embeddings = debug_merge_multimodal_embeddings
-                print("🔧 已安装VLLM内部监控")
-                
-            except Exception as e:
-                print(f"⚠️ 安装VLLM监控失败: {e}")
-            # ===== VLLM内部监控结束 =====
+     
+            print("real enter vllm generating")
             
+            # 添加详细的调试信息
+            for i, vllm_input in enumerate(vllm_inputs):
+                prompt_tokens = vllm_input["prompt_token_ids"]
+                image_pad_count = prompt_tokens.count(151655)  # <|image_pad|> token id
+                print(f"样本 {i}: prompt长度={len(prompt_tokens)}, image_pad数量={image_pad_count}")
+                print(f"  使用已扩展的tokens，不会触发VLLM重新扩展")
+                
+                # 检查是否有multi_modal_data（现在应该没有）
+                if "multi_modal_data" in vllm_input:
+                    print(f"  警告：仍然包含multi_modal_data！")
+                else:
+                    print(f"  ✓ 没有multi_modal_data，避免重复扩展")
+            
+            print("dlf_check rollout_spmdpy:",vllm_inputs)
+           
+            ## single one pad token
             outputs = self.inference_engine.generate(
                 prompts=vllm_inputs,  # because we have already convert it to prompt token id
                 sampling_params=self.sampling_params,
                 lora_request=lora_requests,
                 use_tqdm=False,
             )
+            print("dlf_check outputs:",outputs)
 
             # TODO(sgm): disable logprob when recompute_log_prob is enable
             # if n = 1: (bs, response_length) ; if n > 1: (bs * n, response_length)

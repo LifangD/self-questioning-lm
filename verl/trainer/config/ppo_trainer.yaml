@@ -356,16 +356,16 @@ actor_rollout_ref:
     layered_summon: False
 
     # TP size for rollout. Only effective for vLLM.
-    tensor_model_parallel_size: 2
+    tensor_model_parallel_size: 4
 
     # max number of tokens in a batch
-    max_num_batched_tokens: 8192
+    max_num_batched_tokens: 32768
 
     # max length for rollout
-    max_model_len: null
+    max_model_len: 16384
 
     # max length of sequences
-    max_num_seqs: 1024
+    max_num_seqs: 32768
 
     # [Will be deprecated, use log_prob_micro_batch_size_per_gpu] The batch size for one forward pass in the computation of log_prob. Global batch size.
     log_prob_micro_batch_size: null
@@ -421,7 +421,7 @@ actor_rollout_ref:
       temperature: 0
 
       # whether to repeat n times for validation
-      n: 1
+      n: 2
 
       # Whether to sample during training rollout. False uses greedy sampling.
       do_sample: False
@@ -763,8 +763,15 @@ trainer:
   # Experiment name for run identification in tracking tools
   experiment_name: debug
 
+  # Debug mode: enables Ray local mode for better debugging experience
+  # When true, all Ray actors run in the same process, allowing breakpoints to work
+  debug_mode: true
+
+  # Shorter timeout for debug mode to fail fast if register center has issues
+  debug_ray_wait_register_center_timeout: 30
+
   # Logging backends to use: "console", "wandb", etc.
-  logger: [ 'console', 'wandb' ]
+  logger: [ 'console' ]
 
   # Number of generations to log during validation
   log_val_generations: 0

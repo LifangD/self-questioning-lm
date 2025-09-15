@@ -21,9 +21,9 @@ actor_rollout_ref:
       optimizer_offload: false
   rollout:
     log_prob_micro_batch_size_per_gpu: 40
-    tensor_model_parallel_size: 2
+    tensor_model_parallel_size: 4
     name: vllm
-    gpu_memory_utilization: 0.6
+    gpu_memory_utilization: 0.8
     n: 5
   ref:
     log_prob_micro_batch_size_per_gpu: 40
@@ -32,11 +32,10 @@ actor_rollout_ref:
 trainer:
   logger:
     - console
-    - wandb
   project_name: sqlm
   experiment_name: null
   nnodes: 1
   test_freq: 5
-  total_epochs: 1000
+  total_epochs: 1
   vis_freq: 1
   n_gpus_per_node: 4

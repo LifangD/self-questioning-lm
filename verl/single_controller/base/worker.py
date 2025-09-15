@@ -147,13 +147,13 @@ class Worker(WorkerHelper):
 
         self._setup_env_cuda_visible_devices()
 
-        world_size = int(os.environ["WORLD_SIZE"])
-        rank = int(os.environ["RANK"])
+        world_size = int(os.environ.get("WORLD_SIZE", "1"))
+        rank = int(os.environ.get("RANK", "0"))
         self._rank = rank
         self._world_size = world_size
 
-        master_addr = os.environ["MASTER_ADDR"]
-        master_port = os.environ["MASTER_PORT"]
+        master_addr = os.environ.get("MASTER_ADDR", "localhost")
+        master_port = os.environ.get("MASTER_PORT", "29500")
 
         local_world_size = int(os.getenv("LOCAL_WORLD_SIZE", "1"))
         local_rank = int(os.getenv("LOCAL_RANK", "0"))

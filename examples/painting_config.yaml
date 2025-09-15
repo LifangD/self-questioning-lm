@@ -1,0 +1,64 @@
+# Painting Caption/QA Training Configuration Example
+# 这个配置展示了如何使用新的painting_majority reward manager
+
+model:
+  # 你的模型配置
+  model_path: "path/to/your/painting/model"
+  
+data:
+  # 数据源配置 - 使用新的data_source标识符
+  data_source: "painting_caption"  # 或者 "painting_qa"
+  
+  # 数据格式示例：
+  # 每个数据项应该包含以下字段：
+  # {
+  #   "uid": "unique_id_for_same_image_question",
+  #   "prompt": "描述这幅画作的内容",
+  #   "image_path": "path/to/image.jpg", 
+  #   "meta_info": {
+  #     "author": "梵高",
+  #     "artwork": "星夜", 
+  #     "period": "后印象派时期"
+  #   },
+  #   "data_source": "painting_caption"
+  # }
+
+reward_manager:
+  # 使用新的painting majority reward manager
+  reward_manager_type: "painting_majority"
+  
+  # Judge模型API配置
+  judge_api_url: "http://localhost:8000/v1/chat/completions"
+  judge_model_name: "gpt-4"  # 或者你的judge模型名称
+  
+  # 评判阈值配置
+  quality_threshold: 0.7        # 事实正确性最低阈值
+  similarity_threshold: 0.8     # 语义相似度阈值（暂未使用，为后续扩展预留）
+  min_majority_ratio: 0.3       # 最小majority比例（对应原来的 1 < majority_num）
+  max_majority_ratio: 0.8       # 最大majority比例（对应原来的 majority_num < n）
+  
+  # 其他参数
+  num_examine: 5
+
+training:
+  # PPO训练参数
+  actor_rollout_ref:
+    rollout:
+      n: 8  # 每个prompt采样8个回答
+      temperature: 0.7
+      
+  # 训练逻辑：
+  # 1. 对每组8个回答，首先用judge模型过滤出事实正确的回答
+  # 2. 计算majority_ratio = n_factual_correct / n_total
+  # 3. 只有当 0.3 < majority_ratio < 0.8 且存在争议时才给reward
+  # 4. 在事实正确的回答中选择质量最高的作为beat_one
+  # 5. 给与beat_one质量相近的回答分配reward=1
+
+# 使用示例：
+# python train_painting.py --config painting_config.yaml
+
+# 数据准备建议：
+# 1. 确保每个数据项都有完整的meta_info（作者、作品、时期）
+# 2. 相同图片/问题的多个样本应该有相同的uid
+# 3. 准备好judge模型的API服务
+# 4. 调优各种阈值参数以适应你的具体任务 

@@ -20,10 +20,10 @@ from verl.utils.hdfs_io import copy, makedirs
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_dir', default='~/selfplay_data/selfplay_prompts')
+    parser.add_argument('--local_dir', default='/data/dlf/code/self-questioning-lm/selfplay_data/selfplay_prompts')
     parser.add_argument('--prompt_version', default='arithmetic_v1')
     parser.add_argument('--hdfs_dir', default=None)
-    parser.add_argument('--num_examples', type=int, default=32768)
+    parser.add_argument('--num_examples', type=int, default=128)
     args = parser.parse_args()
 
     data_source = 'yolo/multiply-3_digit' # using multiply parser for all selfplay setups
@@ -65,6 +65,7 @@ if __name__ == '__main__':
                 )
             else:
                 raise ValueError(f"Unsupported prompt_version: {args.prompt_version}")
+            print("split:{},{}".format(split,prompt))
 
             return {
                 "data_source": data_source,
@@ -89,9 +90,30 @@ if __name__ == '__main__':
     dummy_dataset = Dataset.from_dict({"dummy": [0] * args.num_examples})
     mapped_dataset = dummy_dataset.map(function=make_map_fn('train'), with_indices=True)
 
+    # 显示示例数据
+    print(f"\n生成的数据集包含 {len(mapped_dataset)} 个样本")
+    print(f"使用的提示版本: {args.prompt_version}")
+    print(f"数据源: {data_source}")
+    
+    # 显示前3个示例
+    print("\n=== 示例数据 ===")
+    for i in range(min(3, len(mapped_dataset))):
+        example = mapped_dataset[i]
+        print(f"\n--- 示例 {i+1} ---")
+        print(f"数据源: {example['data_source']}")
+        print(f"能力类型: {example['ability']}")
+        print(f"奖励模型配置: {example['reward_model']}")
+        print(f"额外信息: {example['extra_info']}")
+        print(f"提示内容:")
+        for msg in example['prompt']:
+            print(f"  角色: {msg['role']}")
+            print(f"  内容: {msg['content'][:200]}{'...' if len(msg['content']) > 200 else ''}")
+
     local_dir = args.local_dir + "_" + args.prompt_version
     os.makedirs(local_dir, exist_ok=True)
     mapped_dataset.to_parquet(os.path.join(local_dir, 'train.parquet'))
+    
+    print(f"\n数据已保存到: {local_dir}/train.parquet")
 
     if args.hdfs_dir is not None:
         makedirs(args.hdfs_dir)

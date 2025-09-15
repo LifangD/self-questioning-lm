@@ -1,0 +1,103 @@
+# @package _global_
+# 国画专用PPO训练配置
+
+
+algorithm:
+  adv_estimator: grpo
+  use_kl_in_reward: false
+# 国画专用数据配置
+data:
+  # Parquet格式数据文件（推荐）
+  train_files: "/data/dlf/code/painting_data/train.parquet"
+  val_files: "/data/dlf/code/painting_data/test.parquet"
+  
+  # 回退JSONL格式数据路径（如果parquet文件不存在）
+  painting_data_path: "/data/dlf/code/VLM-ChinesePainting-Alignment/Data/SpecificQA/sub_8k_data/sample8k_qa_ground.jsonl"
+  painting_val_data_path: "/data/dlf/code/VLM-ChinesePainting-Alignment/Data/SpecificQA/sub_8k_data/sample8k_qa_ground_tmp_val.jsonl"
+  
+  # 数据处理参数
+  prompt_key: "prompt"  # RLHFDataset需要的字段
+  cache_dir: "/tmp/verl_cache"  # 缓存目录
+  max_prompt_length: 512
+  max_response_length: 1024
+  train_batch_size: 8  # 图像处理需要更多内存，适当减小
+  val_batch_size: 8
+
+# 模型配置
+actor_rollout_ref:
+  model:
+    # 使用Qwen2.5-VL模型
+    path: /data/share/hub/models/Qwen/Qwen2.5-VL-3B-Instruct
+    model_type: qwen2vl
+    use_multimodal: true
+  
+  actor:
+    # 使用国画专用Proposer Worker
+    fsdp_config:
+      fsdp_size: 1
+    optim:
+      lr: 1.0e-6  # 多模态模型使用较小学习率
+    ppo_mini_batch_size: 8
+    ppo_micro_batch_size_per_gpu: 1
+  
+  rollout:
+    name: vllm
+    # 使用国画专用Solver Worker
+    fsdp_config:
+      fsdp_size: 1
+    temperature: 0.7
+    top_p: 0.9
+    max_new_tokens: 512
+    log_prob_micro_batch_siz: 8
+    log_prob_micro_batch_size_per_gpu: 1
+
+# 训练器配置
+trainer:
+  trainer_class: "verl.trainer.painting.painting_trainer.PaintingRayPPOTrainer"
+  experiment_name: painting_debug
+  total_epochs: 1
+  n_gpus_per_node: 4
+  
+  # 调试模式
+  debug_mode: false
+  
+  # PPO参数
+  ppo_mini_batch_size: 1
+  ppo_epochs: 2
+  
+  # 保存和日志
+  save_freq: 5
+  log_freq: 1
+
+# 奖励模型配置
+reward_model:
+  enable: true
+  strategy: "fsdp"  # 或者 "megatron" 
+  model_path: "/data/share/hub/models/Qwen/Qwen2.5-VL-3B-Instruct"  # 使用相同的多模态模型作为judge
+  # 国画专用奖励配置
+  reward_kwargs:
+    # 多维评估权重
+    visual_weight: 0.4      # 视觉分析准确性权重
+    knowledge_weight: 0.3   # 艺术知识准确性权重  
+    quality_weight: 0.3     # 分析质量权重
+    
+    # 评估标准
+    enable_multimodal_validation: true
+    enable_external_knowledge_check: false  # 暂时关闭，需要外部API
+    
+    # 奖励范围
+    reward_scale: 1.0
+    reward_bias: 0.0
+
+# Ray配置
+ray_init:
+  num_cpus: 16
+  num_gpus: 4
+
+# 日志配置
+logger: ['console','tensorboard']
+
+# 检查点配置
+checkpoint:
+  save_freq: 5
+  max_to_keep: 3 

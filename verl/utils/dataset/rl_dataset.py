@@ -216,7 +216,7 @@ class RLHFDataset(Dataset):
 
             # second_per_grid_ts isn't used for training, just for mrope
             row_dict["multi_modal_inputs"].pop("second_per_grid_ts", None)
-
+            ## 
         else:
             raw_prompt = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
             model_inputs = self.tokenizer(raw_prompt, return_tensors="pt", add_special_tokens=False)

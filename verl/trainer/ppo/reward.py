@@ -104,6 +104,9 @@ def load_reward_manager(config, tokenizer, num_examine, is_train=True, **reward_
     # Note(haibin.lin): For custom reward managers, please make sure they are imported and
     # registered via `verl.workers.reward_manager.register`
     # By default reward_manager is set to naive (NaiveRewardManager)
+    # print("dlf_ch_painting_config:", config)
+    # print("dlf_ch_painting_config.reward_model:", config.reward_model)
+    # print("dlf_ch_painting_reward_manager_name:", config.reward_model.get("reward_manager", "naive"))
     reward_manager_name = config.reward_model.get("reward_manager", "naive")
     if not is_train:
         reward_manager_name = "naive"

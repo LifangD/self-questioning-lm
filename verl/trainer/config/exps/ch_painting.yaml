@@ -1,0 +1,42 @@
+# @package _global_
+
+# dataset config for Chinese painting caption/qa tasks
+data:
+  train_files: /data/dlf/code/self-questioning-lm/selfplay_data/ch_painting/train.parquet
+  val_files: /data/dlf/code/self-questioning-lm/selfplay_data/ch_painting/test.parquet
+
+  max_prompt_length: 2048
+  max_response_length: 4096
+  truncation: left
+  reward_fn_key: data_source
+  image_key: images
+
+# 使用majority reward manager，但针对ch_painting任务进行了特殊处理
+reward_model:
+  reward_manager: majority
+
+trainer:
+  balance_batch: false
+  self_play: true
+  proposer_parser_version: v1
+  self_play_solver_reward: ttrl
+  base_format: False
+  n_gpus_per_node: 4
+
+  
+
+actor_rollout_ref:
+  rollout:
+    tensor_model_parallel_size: 4
+    n: 2  # 每个prompt采样8个回答，用于majority评判
+    max_num_batched_tokens: 327680
+
+    # max length for rollout
+    max_model_len: 8192
+    # max length of sequences
+    max_num_seqs: 16384
+    gpu_memory_utilization: 0.5
+    val_kwargs:
+      n: 2
+  model:
+    path: /data/dlf/code/ms-swift/my-exps/2508/output/full_seal_v2/v1-20250822-164916/checkpoint-3000

@@ -612,6 +612,7 @@ class ActorRolloutRefWorker(Worker):
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def generate_sequences(self, prompts: DataProto):
         # Support all hardwares
+        #breakpoint()
         prompts = prompts.to(get_torch_device().current_device())
 
         assert self._is_rollout
@@ -627,6 +628,8 @@ class ActorRolloutRefWorker(Worker):
 
             prompts = self.rollout_sharding_manager.preprocess_data(prompts)
             with _timer("generate_sequences", timing_generate):
+             
+                
                 output = self.rollout.generate_sequences(prompts=prompts)
 
             log_gpu_memory_usage("After rollout generation", logger=logger)

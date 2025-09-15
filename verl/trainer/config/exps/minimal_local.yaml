@@ -1,0 +1,32 @@
+# @package _global_
+
+# 核心：强制单进程模式
+trainer:
+  nnodes: 1
+  n_gpus_per_node: 1
+  ray_wait_register_center_timeout: 30  # 大幅减少等待时间
+
+# 最小资源配置
+actor_rollout_ref:
+  rollout:
+    tensor_model_parallel_size: 1
+    n: 1  # 只生成1个回答
+    log_prob_micro_batch_size_per_gpu: 1
+    
+  actor:
+    ppo_mini_batch_size: 1
+    ppo_micro_batch_size_per_gpu: 1
+    use_kl_loss: false
+    entropy_coeff: 0
+    
+  ref:
+    log_prob_micro_batch_size_per_gpu: 1
+
+# 最小数据批次
+data:
+  train_batch_size: 1
+
+# Ray初始化优化
+ray_init:
+  num_cpus: 1
+  single_gpu_mode: true

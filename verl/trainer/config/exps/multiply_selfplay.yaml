@@ -2,8 +2,8 @@
 
 # dataset config
 data:
-  train_files: selfplay_data/selfplay_prompts_arithmetic_v1/train.parquet
-  val_files: selfplay_data/multiply-3_digit/test.parquet
+  train_files: /data/dlf/code/self-questioning-lm/selfplay_data/ch_painting/train.parquet
+  val_files: /data/dlf/code/self-questioning-lm/selfplay_data/ch_painting/test.parquet
 
   max_prompt_length: 512
   max_response_length: 1024
@@ -18,5 +18,5 @@ actor_rollout_ref:
   rollout:
     n: 4
   model:
-    path: Qwen/Qwen2.5-3B-Instruct
+    path: /data/share/hub/models/Qwen/Qwen2.5-VL-3B-Instruct
 

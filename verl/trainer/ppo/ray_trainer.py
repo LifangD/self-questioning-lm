@@ -67,7 +67,7 @@ import wandb
 import verl.utils.torch_functional as verl_F
 from verl.utils.model import compute_position_id_with_mask
 from verl.utils.reward_score.math import last_boxed_only_string, remove_boxed
-
+import debugpy
 def extract_solution(solution_str):
     return remove_boxed(last_boxed_only_string(solution_str))
 
@@ -425,6 +425,7 @@ class RayPPOTrainer:
 
         if self.config.algorithm.adv_estimator == AdvantageEstimator.GAE:
             self.use_critic = True
+            ## dlf_check: grpo
         elif self.config.algorithm.adv_estimator in [
             AdvantageEstimator.GRPO,
             AdvantageEstimator.GRPO_PASSK,
@@ -457,6 +458,7 @@ class RayPPOTrainer:
 
         # 1. Check total batch size for data correctness
         real_train_batch_size = config.data.train_batch_size * config.actor_rollout_ref.rollout.n
+        print(real_train_batch_size, minimal_bsz)
         assert real_train_batch_size % minimal_bsz == 0, f"real_train_batch_size ({real_train_batch_size}) must be divisible by minimal possible batch size ({minimal_bsz})"
 
         # A helper function to check "micro_batch_size" vs "micro_batch_size_per_gpu"
@@ -502,12 +504,13 @@ class RayPPOTrainer:
                 config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu,
                 "actor_rollout_ref.rollout",
             )
-
+        #dlf_check: use_critic: false
         if self.use_critic and not config.critic.use_dynamic_bsz:
             # Check for critic micro-batch size conflicts
             check_mutually_exclusive(config.critic.ppo_micro_batch_size, config.critic.ppo_micro_batch_size_per_gpu, "critic")
 
         # Check for reward model micro-batch size conflicts
+        #dlf_check: false
         if config.reward_model.enable and not config.reward_model.use_dynamic_bsz:
             check_mutually_exclusive(config.reward_model.micro_batch_size, config.reward_model.micro_batch_size_per_gpu, "reward_model")
 
@@ -524,7 +527,7 @@ class RayPPOTrainer:
                 assert config.actor_rollout_ref.actor.ppo_micro_batch_size * sp_size >= n_gpus
 
         assert config.actor_rollout_ref.actor.loss_agg_mode in [
-            "token-mean",
+            "token-mean", ## dlf_check:selected
             "seq-mean-token-sum",
             "seq-mean-token-mean",
             "seq-mean-token-sum-norm",
@@ -689,6 +692,7 @@ class RayPPOTrainer:
             test_batch = DataProto.from_single_dict(test_data)
 
             # repeat test batch
+            test_batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(test_batch.batch))], dtype=object)
             test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n, interleave=True)
 
             # we only do validation on rule-based rm
@@ -699,6 +703,7 @@ class RayPPOTrainer:
             input_ids = test_batch.batch["input_ids"]
             # TODO: Can we keep special tokens except for padding tokens?
             input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
+            ##dlf_check 这里会把special_token去掉
             sample_inputs.extend(input_texts)
 
             batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
@@ -726,6 +731,8 @@ class RayPPOTrainer:
             # pad to be divisible by dp_size
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
             if not self.async_rollout_mode:
+                #breakpoint()
+                ## the input is dataproto
                 test_output_gen_batch_padded = self.actor_rollout_wg.generate_sequences(test_gen_batch_padded)
             else:
                 self.async_rollout_manager.wake_up()
@@ -744,7 +751,7 @@ class RayPPOTrainer:
             test_batch = test_batch.union(test_output_gen_batch)
 
             # evaluate using reward_function
-            result = self.val_reward_fn(test_batch, return_dict=True)
+            result = self.val_reward_fn(test_batch, return_dict=True) ## validate的时候用真实的question 进行测试，仅考验答案的质量
             reward_tensor = result["reward_tensor"]
             scores = reward_tensor.sum(-1).cpu().tolist()
             sample_scores.extend(scores)
@@ -802,6 +809,8 @@ class RayPPOTrainer:
         self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
 
         # create actor and rollout
+        ##dlf_check:true
+       
         if self.hybrid_engine:
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.ActorRollout)
             actor_rollout_cls = RayClassWithInitArgs(
@@ -820,6 +829,7 @@ class RayPPOTrainer:
             self.resource_pool_to_cls[resource_pool]["critic"] = critic_cls
 
         # create reference policy if needed
+        # dlf_check:True
         if self.use_reference_policy:
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.RefPolicy)
             ref_policy_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RefPolicy], config=self.config.actor_rollout_ref, role="ref")
@@ -997,7 +1007,7 @@ class RayPPOTrainer:
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
-        if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
+        if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", False):
             val_metrics = self._validate()
             assert val_metrics, f"{val_metrics=}"
             pprint(f"Initial validation metrics: {val_metrics}")
@@ -1011,7 +1021,7 @@ class RayPPOTrainer:
         # we start from step 1
         self.global_steps += 1
         last_val_metrics = None
-
+       
         for epoch in range(self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
                 metrics = {}
@@ -1019,6 +1029,7 @@ class RayPPOTrainer:
                 batch: DataProto = DataProto.from_single_dict(batch_dict)
 
                 # pop those keys for generation
+                #debugpy.breakpoint()
                 batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
                 non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
                 if "multi_modal_data" in batch.non_tensor_batch:
@@ -1036,6 +1047,8 @@ class RayPPOTrainer:
 
                 with _timer("step", timing_raw):
                     # generate a batch
+
+                    ## dlf_check: generate-questions
                     with _timer("gen", timing_raw):
                         if not self.async_rollout_mode:
                             gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
@@ -1046,19 +1059,41 @@ class RayPPOTrainer:
                         timing_raw.update(gen_batch_output.meta_info["timing"])
                         gen_batch_output.meta_info.pop("timing", None)
 
+                    print("dlf_check: finish generating questions")
                     if self.config.trainer.self_play:
                         solver_input_ids_lst = []
                         solver_attention_mask_lst = []
                         solver_position_ids_lst = []
                         solver_extra_infos_lst = []
+                       
                         solver_loss_mask_lst = []
                         solver_ground_truth_lst = []
+                      
                         for i in range(len(gen_batch_output)):
                             response_ids = gen_batch_output.batch["responses"][i]
                             response_str = self.tokenizer.decode(response_ids, skip_special_tokens=True)
+                            ## the real_question with some modification
                             if self.config.trainer.proposer_parser_version == 'v1':
                                 proposed_question_str = response_str
-                                proposed_question_str = f"""Let's think step by step and enclose the reasoning process and answer within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> RESULT_NUMBER </answer>. {proposed_question_str}"""
+                                #proposed_question_str = f"""Let's think step by step and enclose the reasoning process and answer within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> RESULT_NUMBER </answer>. {proposed_question_str}"""
+                                proposed_question_str = f"""
+                                【格式硬性规定】
+                                1. 若问题中出现“检测/指出/列出”等字样，答案开头必须输出：
+                                **物象/技法列表：**
+                                <objects>
+                                ref1: 名称<left,top,right,bottom>
+                                ref2: 名称<left,top,right,bottom>
+                                …
+                                </objects>
+
+                                2. 所有最终内容须包在 <answer>…</answer> 内。
+
+                                3. 若问题末尾含“/think”或出现“请逐步思考/使用思考模式”，须先输出 <think>…推理过程…</think>；否则直接进入 <answer>…</answer>。
+                                
+                                【实际问题】
+                                {proposed_question_str}
+                                """
+                                
                                 loss_mask = torch.ones_like(gen_batch_output.batch["input_ids"][i])
                                 messages = [{"role": "user", "content": proposed_question_str}]
                             elif self.config.trainer.proposer_parser_version == 'v2':
@@ -1082,7 +1117,7 @@ class RayPPOTrainer:
                                     loss_mask = torch.ones_like(gen_batch_output.batch["input_ids"][i])
                             else:
                                 assert False, "Unsupported proposer_parser_version"
-                            
+                            ## dlf_comment:solver从格式上是否能正确响应 来决定loss_mask
                             proposed_question = self.tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
                             proposed_question = self.tokenizer(proposed_question, return_tensors="pt", add_special_tokens=False)
                             proposed_question_input_ids = proposed_question['input_ids']
@@ -1129,6 +1164,8 @@ class RayPPOTrainer:
                         solver_gen_batch = solver_batch.pop(
                             batch_keys=batch_keys_to_pop,
                         )
+                        ## 先自己generate-question 再generate-answer
+                        
                         solver_gen_batch_output = self.actor_rollout_wg.generate_sequences(solver_gen_batch)
                         solver_batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(solver_batch.batch))], dtype=object)
                         solver_batch.non_tensor_batch["reward_model"] = np.array([None] * len(solver_batch.batch), dtype=object)
@@ -1182,8 +1219,9 @@ class RayPPOTrainer:
                     with _timer("reward", timing_raw):
                         if self.config.trainer.self_play:
                             reward_tensor = torch.zeros_like(batch.batch["responses"], dtype=torch.float32)
-                            reward_extra_infos_dict = {}
+                            reward_extra_infos_dict = {}                            
                             if self.config.trainer.self_play_solver_reward == 'ttrl':
+                                print("dlf_check:begin to calculated the reward")
                                 solver_reward_tensor, solver_reward_extra_infos_dict = compute_reward(solver_batch, self.reward_fn)
                                 loss_mask_lst = []
                                 for i in range(len(batch)):
@@ -1192,7 +1230,7 @@ class RayPPOTrainer:
                                     valid_response_length = batch.batch["attention_mask"][i, prompt_length:].sum()
 
                                     num_majority = solver_reward_tensor[i * self.config.actor_rollout_ref.rollout.n: (i + 1) * self.config.actor_rollout_ref.rollout.n].sum()
-                                    if num_majority != self.config.actor_rollout_ref.rollout.n and num_majority > 1:
+                                    if num_majority != self.config.actor_rollout_ref.rollout.n and num_majority > 1: ## dlf_comment: 没有全对但是答对的情况>1，难度适中,有争议 但大体正确
                                         reward_tensor[i, valid_response_length - 1] = 1
                                     solver_loss_mask = solver_batch.batch['loss_mask'][i * self.config.actor_rollout_ref.rollout.n] # assume it would be the same for i * n to (i + 1) * n
                                     if solver_loss_mask.sum() > 0:  
@@ -1201,6 +1239,7 @@ class RayPPOTrainer:
                                         loss_mask = torch.zeros_like(batch.batch['input_ids'][i], dtype=torch.float32)
                                     loss_mask_lst.append(loss_mask)
                                 proposer_loss_mask = torch.stack(loss_mask_lst)
+
                                 batch.batch['loss_mask'] = proposer_loss_mask
                             elif self.config.trainer.self_play_solver_reward == 'prime':
                                 solver_reward_tensor, solver_reward_extra_infos_dict = compute_reward(solver_batch, self.reward_fn)
